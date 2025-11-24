@@ -1,0 +1,140 @@
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+# Load QUASARR-seq enhancer activity logFCs
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_eaBC_limma_logFC_call.csv")
+
+# Load SOLARR-seq enhancer activity logFCs
+SOLARR_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC_call <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/SOLARR_CNPL-TRE202-TRE5-TRE6_eaBC_limma_logFC_call.csv")
+```
+
+```{r}
+# Merge QUASARR-seq and SOLARR-seq enhancer activities
+QUASARR_SOLARR <- merge(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, SOLARR_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC_call, by = "Element", all = FALSE)
+
+# Remove empty values
+QUASARR_SOLARR <- na.omit(QUASARR_SOLARR)
+```
+
+```{r}
+# Compute Spearman correlation between QUASARR-seq and SOLARR-seq enhancer activities
+cor_test <- cor.test(QUASARR_SOLARR$activity.y, QUASARR_SOLARR$activity.x, use = "complete.obs", method = "spearman")
+rho <- cor_test$estimate
+p_value <- cor_test$p.value
+
+# Fit linear regression model
+lm_model <- lm(activity.y ~ activity.x, data = QUASARR_SOLARR)
+
+# Create P-value label
+p_label <- if (p_value < 0.001) {
+  substitute(italic(P) < 0.001)
+} else {
+  substitute(italic(P) == .(formatC(p_value, format = "e", digits = 2)))
+}
+
+# Fig. 4b
+f4b <- ggplot(QUASARR_SOLARR, aes(x = activity.x, y = activity.y)) +
+  geom_point(size = 1, alpha = 0.25) +
+  geom_smooth(method = "lm", color = "#4970e2", se = FALSE, linetype = "dashed", size = 0.5) +
+  geom_vline(xintercept = 0.5456123, linetype = "dashed", color = "grey") +
+  geom_hline(yintercept = 0.7996708, linetype = "dashed", color = "grey") +
+  labs(x = "QUASARR-seq\nenhancer activity", y = "SOLARR-seq\nenhancer activity") +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = min(QUASARR_SOLARR$activity.x, na.rm = TRUE),
+           y = max(QUASARR_SOLARR$activity.y, na.rm = TRUE),
+           label = as.expression(bquote(rho == .(round(rho, 2)) * "," ~ .(p_label))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f4b
+```
+
+```{r}
+# Compute average enhancer activity and difference between SOLARR-seq and QUASARR-seq
+QUASARR_SOLARR$average_activity <- (QUASARR_SOLARR$activity.y + QUASARR_SOLARR$activity.x) / 2
+QUASARR_SOLARR$difference_activity <- QUASARR_SOLARR$activity.y - QUASARR_SOLARR$activity.x
+
+# Calculate mean difference and limits of agreement
+mean_diff <- mean(QUASARR_SOLARR$difference_activity, na.rm = TRUE)
+sd_diff <- sd(QUASARR_SOLARR$difference_activity, na.rm = TRUE)
+loa_upper <- mean_diff + 1.96 * sd_diff
+loa_lower <- mean_diff - 1.96 * sd_diff
+
+# Fig. 4c
+f4c <- ggplot(QUASARR_SOLARR, aes(x = average_activity, y = difference_activity)) +
+  geom_point(size = 1, alpha = 0.25) +
+  geom_hline(yintercept = mean_diff, color = "#0b3d91", linetype = "dashed") + # Mean difference line
+  geom_hline(yintercept = loa_upper, color = "#fc3d21", linetype = "dashed") +  # Upper limit of agreement
+  geom_hline(yintercept = loa_lower, color = "#fc3d21", linetype = "dashed") +  # Lower limit of agreement
+  labs(x = "Average enhancer activity", y = "Difference in activity\n(SOLARR-seq - QUASARR-seq)") +
+  ylim(-1.25, 1.25) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5, vjust = 0.5),
+        aspect.ratio = 0.5)
+f4c
+```
+
+```{r}
+# Function to prepare data for donut chart showing active calls by assay
+prepare_donut_data <- function(df) {
+  active_both <- sum(df$call.x == "active" & df$call.y == "active")
+  active_quasarr_only <- sum(df$call.x == "active" & df$call.y != "active")
+  active_solarr_only <- sum(df$call.y == "active" & df$call.x != "active")
+  
+  # Create counts dataframe
+  donut_data <- data.frame(
+    Category = c("QUASARR-seq & SOLARR-seq", "QUASARR-seq", "SOLARR-seq"),
+    Count = c(active_both, active_quasarr_only, active_solarr_only)
+  )
+  
+  # Set factor order
+  donut_data$Category <- factor(donut_data$Category, 
+                                levels = c("SOLARR-seq", "QUASARR-seq", "QUASARR-seq & SOLARR-seq"))
+  
+  # Compute percentages and positions for labels
+  donut_data$Percentage <- (donut_data$Count / sum(donut_data$Count)) * 100
+  
+  donut_data <- donut_data %>%
+    mutate(Position = cumsum(Percentage) - (Percentage / 2))
+  
+  return(donut_data)
+}
+
+# Prepare donut chart data
+donut_data <- prepare_donut_data(QUASARR_SOLARR)
+
+# Fig. 4d
+f4d <- ggplot(donut_data, aes(x = 2, y = Percentage, fill = Category)) +
+  geom_bar(stat = "identity", alpha = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "% (", Count, ")"), y = Position), color = "black", size = 3.33) +
+  xlim(0.5, 2.5) +
+  labs(fill = "Category", title = "Active enhancer calls by assay\n") +
+  scale_fill_manual(values = c("QUASARR-seq & SOLARR-seq" = "#4970e2", "QUASARR-seq" = "#967bb6", "SOLARR-seq" = "grey")) +
+  theme_void() +
+  theme(plot.title = element_text(size = 11, hjust = 0.5),
+        legend.position = "top",
+        legend.key.size = unit(0.3, "cm"),
+        legend.text = element_text(size = 9)) +
+  guides(fill = guide_legend(title = NULL))
+f4d
+```
+
+```{r}
+sessionInfo()
+```

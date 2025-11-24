@@ -1,0 +1,500 @@
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(ggsignif)
+```
+
+```{r}
+# Load QUASARR-seq logFCs
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_paBC_limma_logFC.tsv")
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_eaBC_limma_logFC.tsv")
+
+# Load QUASARR-seq calls
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_paBC_limma_logFC_call.csv")
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_eaBC_limma_logFC_call.csv")
+
+# Load GENCODE annotations
+Confident_Gencode_Transcribed <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/Confident_Gencode_Transcribed.txt", header=FALSE)
+Confident_Gencode_Untranscribed <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/Confident_Gencode_Untranscribed.txt", header=FALSE)
+
+# Load PRO-cap TSS counts
+PROcap_counts <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/PROcap_counts.csv")
+
+# Load WHG-STARR-seq, ATAC-STARR-seq, and lentiMPRA calls
+lentiMPRA_50_overlap <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/lentiMPRA_50_overlap.bed", header=FALSE)
+WHG.STARR_50_overlap <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/WHG-STARR_50_overlap.bed", header=FALSE)
+ATAC.STARR_50_overlap <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/ATAC-STARR_50_overlap.bed", header=FALSE)
+```
+
+```{r}
+# Compute promoter activity log2FC per replicate
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC1 <- log2(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$RNA1 / QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$DNA1)
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC2 <- log2(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$RNA2 / QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$DNA2)
+
+# Remove infinite values
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC[
+                                            QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC1 != -Inf & 
+                                            QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC2 != -Inf, ]
+```
+
+```{r}
+# Compute R^2
+cor <- cor(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC2, QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC1, use = "complete.obs")
+if (is.na(cor)) {
+} else {
+rsq <- cor^2
+}
+
+# Fit linear regression model
+lm_model <- lm(logFC2 ~ logFC1, data = QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC)
+
+# Fig. 1b
+f1b <- ggplot(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC, aes(x = logFC1, y = logFC2)) +
+  geom_point(size = 1, alpha = 0.25) +
+  geom_smooth(method = "lm", color = "#b04dbe", se = FALSE, linetype = "dashed", size = 0.5) +
+  coord_cartesian(xlim = c(-3, 7.5), ylim = c(-3, 7.5)) +
+  labs(title = "Promoter activity", 
+       x = expression("Replicate 1 (log"["2"]*")"),
+       y = expression("Replicate 2 (log"["2"]*")")) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = min(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC1, na.rm = TRUE),
+           y = max(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$logFC2, na.rm = TRUE),
+           label = as.expression(bquote(italic(R)^2 == .(round(rsq, 2)))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f1b
+```
+
+```{r}
+# Extract ORFs
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC)
+
+# Split ORFs by orientation
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_fwd <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs$Element),]
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_rev <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs$Element),]
+```
+
+```{r}
+# Split full dataset by orientation
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$Element),]
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$Element),]
+```
+
+```{r}
+# Compute promoter activity normalization factors
+PA_fwd_NF <- mean(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_fwd$logFC, na.rm = TRUE)
+PA_rev_NF <- mean(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_rev$logFC, na.rm = TRUE)
+
+# Compute promoter activity boost indices
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd %>%
+  mutate(
+    PA_BI = logFC - PA_fwd_NF
+  )
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev %>%
+  mutate(
+    PA_BI = logFC - PA_rev_NF
+  )
+```
+
+```{r}
+# Combine orientations
+paBC_combined <- rbind(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd, QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev)
+
+# Extract orientation tag
+paBC_combined$Orientation <- ifelse(grepl("\\.(fwd|rev)", paBC_combined$Element),
+                                    sub(".*\\.(fwd|rev)", "\\1", paBC_combined$Element),
+                                    NA)
+
+# Remove orientation suffix from element names
+paBC_combined$Element <- gsub("\\.(fwd|rev)", "", paBC_combined$Element)
+```
+
+```{r}
+# Rename column in GENCODE annotations
+colnames(Confident_Gencode_Transcribed)[1] <- "Element"
+colnames(Confident_Gencode_Untranscribed)[1] <- "Element"
+
+# Extract ORFs
+paBC_combined_ORFs <- paBC_combined[grepl("^(5|7)", paBC_combined$Element),]
+
+# Assign ORF placeholders
+paBC_combined_ORFs$V2 <- "ORF"
+paBC_combined_ORFs$V3 <- " "
+paBC_combined_ORFs$V4 <- " "
+paBC_combined_ORFs$PROcapClass <- " "
+
+# Merge with GENCODE annotations and assign PRO-cap class
+paBC_combined_GENCODE_transcribed <- merge(paBC_combined, Confident_Gencode_Transcribed, by = "Element")
+paBC_combined_GENCODE_transcribed$PROcapClass <- "Transcribed"
+
+paBC_combined_GENCODE_untranscribed <- merge(paBC_combined, Confident_Gencode_Untranscribed, by = "Element")
+paBC_combined_GENCODE_untranscribed$PROcapClass <- "Untranscribed"
+
+# Combine transcribed and untranscribed
+paBC_combined_GENCODE <- rbind(paBC_combined_GENCODE_transcribed, paBC_combined_GENCODE_untranscribed)
+
+# Combine ORFs and annotated elements
+paBC_combined_ORFs_GENCODE <- rbind(paBC_combined_ORFs, paBC_combined_GENCODE)
+
+# Set factor order
+paBC_combined_ORFs_GENCODE <- paBC_combined_ORFs_GENCODE %>%
+  mutate(level = factor(V2, levels = c("ORF", "Distal", "Proximal")))
+
+paBC_combined_ORFs_GENCODE <- paBC_combined_ORFs_GENCODE %>%
+  mutate(level2 = factor(PROcapClass, levels = c(" ", "Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Extract transcribed proximal and distal elements
+Transcribed <- paBC_combined_ORFs_GENCODE %>%
+  filter(level %in% c("Proximal", "Distal") & PROcapClass == "Transcribed")
+
+# Run t-test between proximal and distal
+t_test_result <- t.test(PA_BI ~ level, data = Transcribed)
+
+# Compute annotation height
+y_pos <- max(Transcribed$PA_BI, na.rm = TRUE) + 0.333
+
+# Fig. 1c
+f1c <- ggplot(paBC_combined_ORFs_GENCODE, aes(x = level, y = PA_BI, fill = level2)) +
+  geom_boxplot(outlier.size = 1, position = position_dodge(width = 0.8), width = 0.6) +
+  scale_fill_manual(values = c(" " = "#444655", "Untranscribed" = "#444655", "Transcribed"   = "#b04dbe"),
+                    breaks = c("Untranscribed", "Transcribed")) +
+  ylim(-3, 7.5) +
+  labs(x = "GENCODE class", y = "Promoter activity\nboost index", fill = "PRO-cap class") +
+  theme_minimal() +
+  theme(axis.line  = element_line(),
+        axis.ticks = element_line(),
+        axis.text  = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = c(0.25, 0.85),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text  = element_text(size = 7),
+        legend.title = element_text(size = 8)) +
+  geom_signif(y_position = y_pos,
+              xmin = 2.2,
+              xmax = 3.2,
+              tip_length = 0.015,
+              size = 0.333,
+              annotations = ifelse(t_test_result$p.value < 0.001, "***",
+                            ifelse(t_test_result$p.value < 0.01, "**",
+                            ifelse(t_test_result$p.value < 0.05, "*", "NS."))),
+              textsize = 3)
+f1c
+```
+
+```{r}
+# Merge promoter activity with PRO-cap counts
+paBC_PROcap <- merge(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call, PROcap_counts, by = "Element")
+```
+
+```{r}
+# Compute Spearman correlation between promoter activity and PRO-cap signal
+cor_test <- cor.test(paBC_PROcap$activity, paBC_PROcap$Count, use = "complete.obs", method = "spearman")
+rho <- cor_test$estimate
+p_value <- cor_test$p.value
+
+# Create P-value label
+p_label <- if (p_value < 0.001) {
+  substitute(italic(P) < 0.001)
+} else {
+  substitute(italic(P) == .(formatC(p_value, format = "e", digits = 2)))
+}
+
+# Fig. 1d
+f1d <- ggplot(paBC_PROcap, aes(x = Count, y = activity)) +
+  geom_point(size = 1, alpha = 0.25) +
+  geom_smooth(method = "lm", color = "#b04dbe", se = FALSE, linetype = "dashed", size = 0.5) +
+  scale_x_log10(limits = c(1, 40000),
+                breaks = c(1, 10, 100, 1000, 10000),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  scale_y_continuous(limits = c(-1, 4)) +
+  labs(x = expression("PRO-cap signal (log"[10]*")"),
+       y = expression(atop("QUASARR-seq","promoter activity (log"["2"]*")"))) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = 1,
+           y = 4,
+           label = as.expression(bquote(rho == .(round(rho, 2)) * "," ~ .(p_label))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f1d
+```
+
+```{r}
+# Compute enhancer activity log2FC per replicate
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC1 <- log2(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$RNA1 / QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$DNA1)
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC2 <- log2(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$RNA2 / QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$DNA2)
+
+# Remove infinite values
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC[
+                                            QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC1 != -Inf & 
+                                            QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC2 != -Inf, ]
+```
+
+```{r}
+# Compute R^2
+cor <- cor(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC2, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC1, use = "complete.obs")
+if (is.na(cor)) {
+} else {
+rsq <- cor^2
+}
+
+# Fit linear regression model
+lm_model <- lm(logFC2 ~ logFC1, data = QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC)
+
+# Fig. 1e
+f1e <- ggplot(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC, aes(x = logFC1, y = logFC2)) +
+  geom_point(size = 1, alpha = 0.25) +
+  geom_smooth(method = "lm", color = "#4970e2", se = FALSE, linetype = "dashed", size = 0.5) +
+  coord_cartesian(xlim = c(-2.5, 5.5), ylim = c(-2.5, 5.5)) +
+  labs(title = "Enhancer activity", 
+       x = expression("Replicate 1 (log"["2"]*")"),
+       y = expression("Replicate 2 (log"["2"]*")")) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = min(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC1, na.rm = TRUE),
+           y = max(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$logFC2, na.rm = TRUE),
+           label = as.expression(bquote(italic(R)^2 == .(round(rsq, 2)))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f1e
+```
+
+```{r}
+# Extract ORFs
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC)
+
+# Split ORFs by orientation
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_fwd <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs$Element),]
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_rev <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs$Element),]
+```
+
+```{r}
+# Split full dataset by orientation
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$Element),]
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$Element),]
+```
+
+```{r}
+# Compute enhancer activity normalization factors
+EA_fwd_NF <- mean(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_fwd$logFC, na.rm = TRUE)
+EA_rev_NF <- mean(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_fwd$logFC, na.rm = TRUE)
+
+# Compute enhancer activity boost indices
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd %>%
+  mutate(
+    EA_BI = logFC - EA_fwd_NF
+  )
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev %>%
+  mutate(
+    EA_BI = logFC - EA_rev_NF
+  )
+```
+
+```{r}
+# Remove orientation suffix from element names
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd_temp <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd_temp$Element <- gsub("\\.fwd", "", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd_temp$Element)
+
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev_temp <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev_temp$Element <- gsub("\\.rev", "", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev_temp$Element)
+
+# Merge orientations
+eaBC_merged <- merge(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd_temp, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev_temp, by = "Element")
+```
+
+```{r}
+# Compute mean of forward and reverse boost index
+eaBC_merged$Mean_fwdrev_BI <- (eaBC_merged$EA_BI.x + eaBC_merged$EA_BI.y) / 2
+```
+
+```{r}
+# Extract ORFs
+eaBC_merged_ORFs <- eaBC_merged[grepl("^(5|7)", eaBC_merged$Element),]
+
+# Assign ORF placeholders
+eaBC_merged_ORFs$V2 <- "ORF"
+eaBC_merged_ORFs$V3 <- " "
+eaBC_merged_ORFs$V4 <- " "
+eaBC_merged_ORFs$PROcapClass <- " "
+
+# Merge with GENCODE annotations and assign PRO-cap class
+eaBC_merged_GENCODE_transcribed <- merge(eaBC_merged, Confident_Gencode_Transcribed, by = "Element")
+eaBC_merged_GENCODE_transcribed$PROcapClass <- "Transcribed"
+
+eaBC_merged_GENCODE_untranscribed <- merge(eaBC_merged, Confident_Gencode_Untranscribed, by = "Element")
+eaBC_merged_GENCODE_untranscribed$PROcapClass <- "Untranscribed"
+
+# Combine transcribed and untranscribed
+eaBC_merged_GENCODE <- rbind(eaBC_merged_GENCODE_transcribed, eaBC_merged_GENCODE_untranscribed)
+
+# Combine ORFs and annotated elements
+eaBC_merged_ORFs_GENCODE <- rbind(eaBC_merged_ORFs, eaBC_merged_GENCODE)
+
+# Set factor order
+eaBC_merged_ORFs_GENCODE <- eaBC_merged_ORFs_GENCODE %>%
+  mutate(level = factor(V2, levels = c("ORF", "Distal", "Proximal")))
+
+eaBC_merged_ORFs_GENCODE <- eaBC_merged_ORFs_GENCODE %>%
+  mutate(level2 = factor(PROcapClass, levels = c(" ", "Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Extract transcribed proximal and distal elements
+Transcribed <- eaBC_merged_ORFs_GENCODE %>%
+  filter(level %in% c("Proximal", "Distal") & PROcapClass == "Transcribed")
+
+# Run t-test between proximal and distal
+t_test_result <- t.test(Mean_fwdrev_BI ~ level, data = Transcribed)
+
+# Compute annotation height
+y_pos <- max(Transcribed$Mean_fwdrev_BI, na.rm = TRUE) + 0.333
+
+# Fig. 1f
+f1f <- ggplot(eaBC_merged_ORFs_GENCODE, aes(x = level, y = Mean_fwdrev_BI, fill = level2)) +
+  geom_boxplot(outlier.size = 1, position = position_dodge(width = 0.8), width = 0.6) +
+  scale_fill_manual(values = c(" " = "#444655", "Untranscribed" = "#444655", "Transcribed"   = "#4970e2"),
+                    breaks = c("Untranscribed", "Transcribed")) +
+  ylim(-2.5, 5.5) +
+  labs(x = "GENCODE class", y = "Enhancer activity\nboost index", fill = "PRO-cap class") +
+  theme_minimal() +
+  theme(axis.line  = element_line(),
+        axis.ticks = element_line(),
+        axis.text  = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = c(0.25, 0.85),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text  = element_text(size = 7),
+        legend.title = element_text(size = 8)) +
+  geom_signif(y_position = y_pos,
+              xmin = 2.2,
+              xmax = 3.2,
+              tip_length = 0.015,
+              size = 0.333,
+              annotations = ifelse(t_test_result$p.value < 0.001, "***",
+                            ifelse(t_test_result$p.value < 0.01, "**",
+                            ifelse(t_test_result$p.value < 0.05, "*", "NS."))),
+              textsize = 3)
+f1f
+```
+
+```{r}
+# Remove unused columns
+WHG.STARR_50_overlap <- WHG.STARR_50_overlap[ , !(names(WHG.STARR_50_overlap) %in% c("V4", "V6", "V8"))]
+
+# Rename columns for consistency
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V5"] <- "V4"
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V7"] <- "V5"
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V9"] <- "V6"
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V10"] <- "V7"
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V11"] <- "V8"
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V12"] <- "V9"
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V13"] <- "V10"
+
+# Rename last column for merging
+colnames(WHG.STARR_50_overlap)[colnames(WHG.STARR_50_overlap) == "V10"] <- "Element"
+colnames(ATAC.STARR_50_overlap)[colnames(ATAC.STARR_50_overlap) == "V10"] <- "Element"
+colnames(lentiMPRA_50_overlap)[colnames(lentiMPRA_50_overlap) == "V10"] <- "Element"
+
+# Merge orthogonal assay with QUASARR-seq
+eaBC_WHG_STARR_50p <- merge(WHG.STARR_50_overlap, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, by = "Element", all = FALSE)
+eaBC_ATAC_STARR_50p <- merge(ATAC.STARR_50_overlap, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, by = "Element", all = FALSE)
+eaBC_lenti_MPRA_50p <- merge(lentiMPRA_50_overlap, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, by = "Element", all = FALSE)
+```
+
+```{r}
+# Function to calculate percent active
+calculate_percent_active <- function(df, name) {
+  df_filtered <- df %>% filter(call == "active")
+  
+  total_TRUE <- nrow(df_filtered)
+  active_calls <- df_filtered %>% filter(V6 == "active") %>% nrow()
+  
+  percent_active <- (active_calls / total_TRUE) * 100
+  
+  data.frame(
+    Name = name,
+    Active = active_calls,
+    Total = total_TRUE,
+    PercentActive = percent_active
+  )
+}
+
+# Compute percent active for each assay
+percent_active_WHG_50p <- calculate_percent_active(eaBC_WHG_STARR_50p, "eaBC_WHG_STARR_50p")
+percent_active_ATAC_50p <- calculate_percent_active(eaBC_ATAC_STARR_50p, "eaBC_ATAC_STARR_50p")
+percent_active_lenti_50p <- calculate_percent_active(eaBC_lenti_MPRA_50p, "eaBC_lenti_MPRA_50p")
+```
+
+```{r}
+# Combine results into dataframe
+whg_50p <- percent_active_WHG_50p %>% mutate(Experiment = "WHG-STARR-seq")
+atac_50p <- percent_active_ATAC_50p %>% mutate(Experiment = "ATAC-STARR-seq")
+lenti_50p <- percent_active_lenti_50p %>% mutate(Experiment = "lentiMPRA")
+
+combined_50p_df <- bind_rows(lenti_50p, atac_50p, whg_50p)
+
+combined_50p_df$Experiment <- factor(combined_50p_df$Experiment, 
+                                     levels = c("lentiMPRA", "WHG-STARR-seq", "ATAC-STARR-seq"))
+```
+
+```{r}
+# Fig. 1g
+f1g <- ggplot(combined_50p_df, aes(x = Experiment, y = PercentActive, fill = Experiment)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_text(aes(label = paste0(Active, " / ", Total), y = PercentActive / 2, angle = 90), size = 3, color = "black") +
+  labs(title = "", x = "", y = "Percent confirmed\nby orthogonal assay (%)") +
+  scale_fill_manual(values = c("lentiMPRA" = "#4970e2", 
+                               "ATAC-STARR-seq" = "#4970e2", 
+                               "WHG-STARR-seq" = "#4970e2")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  guides(fill = FALSE)
+f1g
+```
+
+```{r}
+sessionInfo()
+```

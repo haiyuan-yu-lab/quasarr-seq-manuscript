@@ -1,0 +1,568 @@
+
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(ggsignif)
+library(tidyverse)
+```
+
+```{r}
+# Load QUASARR-seq logFCs
+QUASARR_pGAPDH_CNPL.TRE202.TRE5.TRE6_paBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_pGAPDH_CNPL-TRE202-TRE5-TRE6_paBC_limma_logFC.tsv")
+QUASARR_pMYC_CNPL.TRE202.TRE5.TRE6_paBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_pMYC_CNPL-TRE202-TRE5-TRE6_paBC_limma_logFC.tsv")
+QUASARR_pAPOBEC3F_CNPL.TRE202.TRE5.TRE6_paBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_pAPOBEC3F_CNPL-TRE202-TRE5-TRE6_paBC_limma_logFC.tsv")
+QUASARR_pGAPDH_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_pGAPDH_CNPL-TRE202-TRE5-TRE6_eaBC_limma_logFC.tsv")
+QUASARR_pMYC_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_pMYC_CNPL-TRE202-TRE5-TRE6_eaBC_limma_logFC.tsv")
+QUASARR_pAPOBEC3F_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_pAPOBEC3F_CNPL-TRE202-TRE5-TRE6_eaBC_limma_logFC.tsv")
+
+# Load CRISPRa data
+Wang_CRISPRa <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/Wang_CRISPRa.csv", row.names=1)
+```
+
+```{r}
+# Merge promoter activity and enhancer activity
+pGAPDH_merged <- merge(QUASARR_pGAPDH_CNPL.TRE202.TRE5.TRE6_paBC_limma_logFC, QUASARR_pGAPDH_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC, by = "Element", all = TRUE)
+pMYC_merged <- merge(QUASARR_pMYC_CNPL.TRE202.TRE5.TRE6_paBC_limma_logFC, QUASARR_pMYC_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC, by = "Element", all = TRUE)
+pAPOBEC3F_merged <- merge(QUASARR_pAPOBEC3F_CNPL.TRE202.TRE5.TRE6_paBC_limma_logFC, QUASARR_pAPOBEC3F_CNPL.TRE202.TRE5.TRE6_eaBC_limma_logFC, by = "Element", all = TRUE)
+```
+
+```{r}
+# Extract ORFs
+pGAPDH_merged_ORFs <- pGAPDH_merged %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC.x, logFC.y)
+
+pMYC_merged_ORFs <- pMYC_merged %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC.x, logFC.y)
+
+pAPOBEC3F_merged_ORFs <- pAPOBEC3F_merged %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC.x, logFC.y)
+```
+
+```{r}
+# Compute normalization factors
+pGAPDH_PA_NF <- mean(pGAPDH_merged_ORFs$logFC.x, na.rm = TRUE)
+pGAPDH_EA_NF <- mean(pGAPDH_merged_ORFs$logFC.y, na.rm = TRUE)
+
+pMYC_PA_NF <- mean(pMYC_merged_ORFs$logFC.x, na.rm = TRUE)
+pMYC_EA_NF <- mean(pMYC_merged_ORFs$logFC.y, na.rm = TRUE)
+
+pAPOBEC3F_PA_NF <- mean(pAPOBEC3F_merged_ORFs$logFC.x, na.rm = TRUE)
+pAPOBEC3F_EA_NF <- mean(pAPOBEC3F_merged_ORFs$logFC.y, na.rm = TRUE)
+```
+
+```{r}
+# Compute boost indices
+pGAPDH_merged <- pGAPDH_merged %>%
+  mutate(
+    PA_BI = logFC.x - pGAPDH_PA_NF,
+    EA_BI = logFC.y - pGAPDH_EA_NF
+  )
+
+pMYC_merged <- pMYC_merged %>%
+  mutate(
+    PA_BI = logFC.x - pMYC_PA_NF,
+    EA_BI = logFC.y - pMYC_EA_NF
+  )
+
+pAPOBEC3F_merged <- pAPOBEC3F_merged %>%
+  mutate(
+    PA_BI = logFC.x - pAPOBEC3F_PA_NF,
+    EA_BI = logFC.y - pAPOBEC3F_EA_NF
+  )
+```
+
+```{r}
+# Combine datasets and add minimal promoter identity
+combined_data <- bind_rows(
+  mutate(pGAPDH_merged, minP = "pGAPDH"),
+  mutate(pMYC_merged, minP = "pMYC"),
+  mutate(pAPOBEC3F_merged, minP = "pAPOBEC3F")
+)
+```
+
+```{r}
+# Set factor order
+combined_data$minP <- factor(combined_data$minP, 
+                             levels = c("pGAPDH", "pMYC", "pAPOBEC3F"))
+```
+
+```{r}
+# Compute summary statistics
+summary_stats <- combined_data %>%
+  group_by(minP) %>%
+  summarise(
+    mean_promoter = mean(PA_BI, na.rm = TRUE),
+    mean_enhancer = mean(EA_BI, na.rm = TRUE),
+    sd_promoter = sd(PA_BI, na.rm = TRUE),
+    sd_enhancer = sd(EA_BI, na.rm = TRUE)
+  )
+
+# Run ANOVA
+anova_promoter <- aov(PA_BI ~ minP, data = combined_data)
+anova_summary_promoter <- summary(anova_promoter)
+print(anova_summary_promoter)
+
+anova_enhancer <- aov(EA_BI ~ minP, data = combined_data)
+anova_summary_enhancer <- summary(anova_enhancer)
+print(anova_summary_enhancer)
+
+# Run Tukey posthoc test if ANOVA is significant
+if (anova_summary_promoter[[1]]["Pr(>F)"][1, 1] < 0.05) {
+  posthoc_promoter <- TukeyHSD(anova_promoter)
+  print(posthoc_promoter)
+}
+
+if (anova_summary_enhancer[[1]]["Pr(>F)"][1, 1] < 0.05) {
+  posthoc_enhancer <- TukeyHSD(anova_enhancer)
+  print(posthoc_enhancer)
+}
+
+# Compute Pearson correlation between promoter and enhancer activity
+cor_test <- cor.test(combined_data$PA_BI, combined_data$EA_BI, method = "pearson")
+print(cor_test)
+```
+
+```{r}
+# Convert p-values to star annotations
+star_annotation <- function(p_value) {
+  if (p_value < 0.001) {
+    return("***")  # Three stars for p-value < 0.001
+  } else if (p_value < 0.01) {
+    return("**")   # Two stars for p-value < 0.01
+  } else if (p_value < 0.05) {
+    return("*")    # One star for p-value < 0.05
+  } else {
+    return("")     # No stars for p-value ≥ 0.05
+  }
+}
+
+# Extract Tukey tables
+tukey_promoter <- posthoc_promoter[[1]]
+
+# Build annotation text for promoter activity posthoc comparisons
+tukey_promoter_text <- paste0(
+  "pMYC-pGAPDH: p=", signif(tukey_promoter["pMYC-pGAPDH", "p adj"], digits = 3),
+  " ", star_annotation(tukey_promoter["pMYC-pGAPDH", "p adj"]), "\n",
+  "pAPOBEC3F-pGAPDH: p=", signif(tukey_promoter["pAPOBEC3F-pGAPDH", "p adj"], digits = 3),
+  " ", star_annotation(tukey_promoter["pAPOBEC3F-pGAPDH", "p adj"]), "\n",
+  "pAPOBEC3F-pMYC: p=", signif(tukey_promoter["pAPOBEC3F-pMYC", "p adj"], digits = 3),
+  " ", star_annotation(tukey_promoter["pAPOBEC3F-pMYC", "p adj"])
+)
+
+# Extract Tukey tables
+tukey_enhancer <- posthoc_enhancer[[1]]
+
+# Build annotation text for enhancer activity posthoc comparisons
+tukey_enhancer_text <- paste0(
+  "pMYC-pGAPDH: p=", signif(tukey_enhancer["pMYC-pGAPDH", "p adj"], digits = 3),
+  " ", star_annotation(tukey_enhancer["pMYC-pGAPDH", "p adj"]), "\n",
+  "pAPOBEC3F-pGAPDH: p=", signif(tukey_enhancer["pAPOBEC3F-pGAPDH", "p adj"], digits = 3),
+  " ", star_annotation(tukey_enhancer["pAPOBEC3F-pGAPDH", "p adj"]), "\n",
+  "pAPOBEC3F-pMYC: p=", signif(tukey_enhancer["pAPOBEC3F-pMYC", "p adj"], digits = 3),
+  " ", star_annotation(tukey_enhancer["pAPOBEC3F-pMYC", "p adj"])
+)
+
+# Define pairwise comparisons for significance bars
+comparisons <- list(
+  c("pMYC", "pGAPDH"),
+  c("pAPOBEC3F", "pMYC"),
+  c("pAPOBEC3F", "pGAPDH"))
+
+# Fig. 6a
+f6a <- ggplot(combined_data, aes(x = minP, y = EA_BI, fill = minP)) +
+  geom_boxplot(outlier.size = 1, alpha = 0.6) +
+  geom_point(data = summary_stats, aes(y = mean_enhancer), color = "black", size = 3, shape = 18) +
+  geom_errorbar(data = summary_stats, aes(y = mean_enhancer, ymin = mean_enhancer - sd_enhancer, ymax = mean_enhancer + sd_enhancer), color = "black", width = 0.2) +
+  annotate("text", x = 2, y = 9, label = expression(paste("ANOVA ", italic("P"), " < 0.001")), size = 3) +
+  scale_y_continuous(breaks = seq(from = -2.5, to = 9, by = 2.5)) +
+  labs(x = "", y = "TRE enhancer activity\nboost index") +
+  scale_fill_manual(values = c("pGAPDH" = "#4970e2", "pMYC" = "#4970e2", "pAPOBEC3F" = "#4970e2")) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  guides(fill = FALSE) +
+  geom_signif(comparisons = comparisons,
+              y_position = c(5.1, 6.1, 7.1),
+              tip_length = 0.01,
+              size = 0.333,
+              annotations = c(
+                star_annotation(tukey_enhancer["pMYC-pGAPDH", "p adj"]),
+                star_annotation(tukey_enhancer["pAPOBEC3F-pMYC", "p adj"]),
+                star_annotation(tukey_enhancer["pAPOBEC3F-pGAPDH", "p adj"])),
+              textsize = 3)
+f6a
+
+# Fig. 6b
+f6b <- ggplot(combined_data, aes(x = minP, y = PA_BI, fill = minP)) +
+  geom_boxplot(outlier.size = 1, alpha = 0.6) +
+  geom_point(data = summary_stats, aes(y = mean_promoter), color = "black", size = 3, shape = 18) +
+  geom_errorbar(data = summary_stats, aes(y = mean_promoter, ymin = mean_promoter - sd_promoter, ymax = mean_promoter + sd_promoter), color = "black", width = 0.2) +
+  annotate("text", x = 2, y = 11, label = expression(paste("ANOVA ", italic("P"), " < 0.001")), size = 3) +
+  scale_y_continuous(breaks = seq(from = -2.5, to = 11, by = 2.5)) +
+  labs(x = "", y = "TRE promoter activity\nboost index") +
+  scale_fill_manual(values = c("pGAPDH" = "#b04dbe", "pMYC" = "#b04dbe", "pAPOBEC3F" = "#b04dbe")) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  guides(fill = FALSE) +
+  geom_signif(comparisons = comparisons,
+              y_position = c(7.1, 8.1, 9.1),
+              tip_length = 0.01,
+              size = 0.333,
+              annotations = c(
+                star_annotation(tukey_promoter["pMYC-pGAPDH", "p adj"]),
+                star_annotation(tukey_promoter["pAPOBEC3F-pMYC", "p adj"]),
+                star_annotation(tukey_promoter["pAPOBEC3F-pGAPDH", "p adj"])),
+              textsize = 3)
+f6b
+```
+
+```{r}
+# Convert rownames to column and parse metadata
+CRISPRa_tidy <- Wang_CRISPRa %>%
+  rownames_to_column("Condition") %>%
+  
+  # Assign cell line
+  mutate(
+    CellLine = case_when(
+      str_detect(Condition, "^HEK 293T") ~ "HEK 293T",
+      str_detect(Condition, "^HeLa") ~ "HeLa"
+    ),
+    
+    # Assign targeted locus
+    TargetedLocus = case_when(
+      str_detect(Condition, " HS2 targeted") ~ "HS2",
+      str_detect(Condition, " HBG1 targeted") ~ "HBG1"
+    ),
+    
+    # Assign measured locus
+    MeasuredLocus = case_when(
+      str_detect(Condition, "HS2 eRNA") ~ "HS2",
+      str_detect(Condition, "HBG1 mRNA") ~ "HBG1",
+      str_detect(Condition, "HS2 H3K27ac") ~ "HS2",
+      str_detect(Condition, "HBG1 H3K27ac") ~ "HBG1",
+      str_detect(Condition, "3C$") ~ "HS2-HBG1"
+    ),
+    
+    # Assign measurement
+    Measurement = case_when(
+      str_detect(Condition, "eRNA$") ~ "eRNA",
+      str_detect(Condition, "mRNA$") ~ "mRNA",
+      str_detect(Condition, "H3K27ac$") ~ "H3K27ac",
+      str_detect(Condition, "3C$") ~ "3C"
+    )
+  ) %>%
+  
+  # Convert wide format to long format
+  pivot_longer(
+    cols = -c(Condition, CellLine, TargetedLocus, MeasuredLocus, Measurement),
+    names_to = "Activator_Rep",
+    values_to = "Value"
+  ) %>%
+  
+  # Split activator and replicate information
+  separate(Activator_Rep, into = c("Activator", "Replicate"), sep = "_R") %>%
+  
+  # Standardize replicate labels
+  mutate(Replicate = paste0("R", Replicate))
+```
+
+```{r}
+# Subset data for HEK293T, HS2, eRNA/mRNA, and dCas9-CBP measurements
+plot_data <- CRISPRa_tidy %>%
+  filter(CellLine == "HEK 293T",
+         TargetedLocus == "HS2",
+         Measurement %in% c("eRNA", "mRNA"),
+         Activator %in% c("dCas9.CBP"))
+
+# Compute log10-transformed values
+plot_data <- plot_data %>%
+  filter(Activator == "dCas9.CBP") %>%
+  mutate(logValue = log10(Value))
+
+# Compute summary statistics
+plot_summary <- plot_data %>%
+  group_by(MeasuredLocus, Measurement, Activator) %>%
+  summarise(
+    log_mean = mean(logValue, na.rm = TRUE),
+    log_sd   = sd(logValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mean_val = 10^log_mean,
+    ymin = 10^(log_mean - log_sd),
+    ymax = 10^(log_mean + log_sd)
+  )
+
+# Perform one-sample t-tests and prepare annotation statistics
+stat_results <- plot_data %>%
+  group_by(Measurement) %>%
+  summarise(
+    p_value = t.test(logValue, mu = 0)$p.value,
+    max_val = max(Value, na.rm = TRUE),
+    mean_val = mean(Value),
+    sd_val   = sd(Value),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    y_position = max_val * 1.25,
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "NS."
+    )
+  )
+
+# Fig. 6c
+f6c <- ggplot(plot_summary, aes(x = Measurement, y = mean_val, fill = Activator)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey") +
+  geom_col(position = position_dodge(width = 0.666), width = 0.333, alpha = 0.666, color = "black") +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = position_dodge(width = 0.333), width = 0.1666) +
+  geom_point(data = plot_data, aes(y = Value), position = position_dodge(width = 0.666), size = 1, color = "black") +
+  scale_y_log10() +
+  scale_x_discrete(limits = c("eRNA", "mRNA"), labels = c("HS2\neRNA", "HBG1\nmRNA")) +
+  labs(x = "", y = expression(atop("Relative RT-qPCR signal","(Cas9-CBP/Cas9, log"["10"]*")"))) +
+  scale_fill_manual(values = c("dCas9.CBP" = "#775EF0"), labels = c("dCas9-CBP"), name = NULL) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "none") +
+  geom_text(data = stat_results, aes(x = Measurement, y = y_position, label = significance), inherit.aes = FALSE, size = 3.333)
+f6c
+```
+
+```{r}
+# Subset data for HEK293T, HS2, H3K27ac, and dCas9-CBP measurements
+plot_data2 <- CRISPRa_tidy %>%
+  filter(CellLine == "HEK 293T",
+         TargetedLocus == "HS2",
+         Measurement == "H3K27ac",
+         Activator %in% c("dCas9.CBP"))
+
+# Compute log10-transformed values
+plot_data2 <- plot_data2 %>%
+  filter(Activator == "dCas9.CBP") %>%
+  mutate(logValue = log10(Value))
+
+# Compute summary statistics
+plot_summary2 <- plot_data2 %>%
+  group_by(MeasuredLocus, Measurement, Activator) %>%
+  summarise(
+    log_mean = mean(logValue, na.rm = TRUE),
+    log_sd   = sd(logValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mean_val = 10^log_mean,
+    ymin = 10^(log_mean - log_sd),
+    ymax = 10^(log_mean + log_sd)
+  )
+
+# Perform one-sample t-tests and prepare annotation statistics
+stat_results2 <- plot_data2 %>%
+  group_by(MeasuredLocus) %>%
+  summarise(
+    p_value = t.test(logValue, mu = 0)$p.value,
+    max_val = max(Value, na.rm = TRUE),
+    mean_val = mean(Value),
+    sd_val   = sd(Value),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    y_position = max_val * 1.05,
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "NS."
+    )
+  )
+
+# Fig. 6d
+f6d <- ggplot(plot_summary2, aes(x = MeasuredLocus, y = mean_val, fill = Activator)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey") +
+  geom_col(position = position_dodge(width = 0.666), width = 0.333, alpha = 0.666, color = "black") +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = position_dodge(width = 0.333), width = 0.1666) +
+  geom_point(data = plot_data2, aes(y = Value), position = position_dodge(width = 0.666), size = 1, color = "black") +
+  scale_y_log10() +
+  scale_x_discrete(limits = c("HS2", "HBG1"), labels = c("HS2\nH3K27ac", "HBG1\nH3K27ac")) +
+  labs(x = "", y = expression(atop("Relative ChIP-qPCR signal","(Cas9-CBP/Cas9, log"["10"]*")"))) +
+  scale_fill_manual(values = c("dCas9.CBP" = "#775EF0"), labels = c("dCas9-CBP"), name = NULL) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "none") +
+  geom_text(data = stat_results2, aes(x = MeasuredLocus, y = y_position, label = significance), inherit.aes = FALSE, size = 3.333)
+f6d
+```
+
+```{r}
+# Subset data for HEK293T, HBG1, eRNA/mRNA, and dCas9-CBP measurements
+plot_data4 <- CRISPRa_tidy %>%
+  filter(CellLine == "HEK 293T",
+         TargetedLocus == "HBG1",
+         Measurement %in% c("eRNA", "mRNA"),
+         Activator %in% c("dCas9.CBP"))
+
+# Compute log10-transformed values
+plot_data4 <- plot_data4 %>%
+  filter(Activator == "dCas9.CBP") %>%
+  mutate(logValue = log10(Value))
+
+# Compute summary statistics
+plot_summary4 <- plot_data4 %>%
+  group_by(MeasuredLocus, Measurement, Activator) %>%
+  summarise(
+    log_mean = mean(logValue, na.rm = TRUE),
+    log_sd   = sd(logValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mean_val = 10^log_mean,
+    ymin = 10^(log_mean - log_sd),
+    ymax = 10^(log_mean + log_sd)
+  )
+
+# Perform one-sample t-tests and prepare annotation statistics
+stat_results4 <- plot_data4 %>%
+  group_by(Measurement) %>%
+  summarise(
+    p_value = t.test(logValue, mu = 0)$p.value,
+    max_val = max(Value, na.rm = TRUE),
+    mean_val = mean(Value),
+    sd_val   = sd(Value),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    y_position = max_val * 1.25,
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "NS."
+    )
+  )
+
+# Fig. 6e
+f6e <- ggplot(plot_summary4, aes(x = Measurement, y = mean_val, fill = Activator)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey") +
+  geom_col(position = position_dodge(width = 0.666), width = 0.333, alpha = 0.666, color = "black") +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = position_dodge(width = 0.333), width = 0.1666) +
+  geom_point(data = plot_data4, aes(y = Value), position = position_dodge(width = 0.666), size = 1, color = "black") +
+  scale_y_log10() +
+  scale_x_discrete(limits = c("eRNA", "mRNA"), labels = c("HS2\neRNA", "HBG1\nmRNA")) +
+  labs(x = "", y = expression(atop("Relative RT-qPCR signal","(Cas9-CBP/Cas9, log"["10"]*")"))) +
+  scale_fill_manual(values = c("dCas9.CBP" = "#775EF0"), labels = c("dCas9-CBP"), name = NULL) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "none") +
+  geom_text(data = stat_results4, aes(x = Measurement, y = y_position, label = significance), inherit.aes = FALSE, size = 3.333)
+f6e
+```
+
+```{r}
+# Subset data for HEK293T, HBG1, H3K27ac, and dCas9-CBP measurements
+plot_data5 <- CRISPRa_tidy %>%
+  filter(CellLine == "HEK 293T",
+         TargetedLocus == "HBG1",
+         Measurement == "H3K27ac",
+         Activator %in% c("dCas9.CBP"))
+
+# Compute log10-transformed values
+plot_data5 <- plot_data5 %>%
+  filter(Activator == "dCas9.CBP") %>%
+  mutate(logValue = log10(Value))
+
+# Compute summary statistics
+plot_summary5 <- plot_data5 %>%
+  group_by(MeasuredLocus, Measurement, Activator) %>%
+  summarise(
+    log_mean = mean(logValue, na.rm = TRUE),
+    log_sd   = sd(logValue, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mean_val = 10^log_mean,
+    ymin = 10^(log_mean - log_sd),
+    ymax = 10^(log_mean + log_sd)
+  )
+
+# Perform one-sample t-tests and prepare annotation statistics
+stat_results5 <- plot_data5 %>%
+  group_by(MeasuredLocus) %>%
+  summarise(
+    p_value = t.test(logValue, mu = 0)$p.value,
+    max_val = max(Value, na.rm = TRUE),
+    mean_val = mean(Value),
+    sd_val   = sd(Value),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    y_position = max_val * 1.1,
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "NS."
+    )
+  )
+
+# Fig. 6f
+f6f <- ggplot(plot_summary5, aes(x = MeasuredLocus, y = mean_val, fill = Activator)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey") +
+  geom_col(position = position_dodge(width = 0.666), width = 0.333, alpha = 0.666, color = "black") +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = position_dodge(width = 0.333), width = 0.1666) +
+  geom_point(data = plot_data5, aes(y = Value), position = position_dodge(width = 0.666), size = 1, color = "black") +
+  scale_y_log10() +
+  scale_x_discrete(limits = c("HS2", "HBG1"), labels = c("HS2\nH3K27ac","HBG1\nH3K27ac")) +
+  labs(x = "", y = expression(atop("Relative ChIP-qPCR signal","(Cas9-CBP/Cas9, log"["10"]*")"))) +
+  scale_fill_manual(values = c("dCas9.CBP" = "#775EF0"), labels = c("dCas9-CBP"), name = NULL) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "none") +
+  geom_text(data = stat_results5, aes(x = MeasuredLocus, y = y_position, label = significance), inherit.aes = FALSE, size = 3.333)
+f6f
+```
+
+```{r}
+sessionInfo()
+```

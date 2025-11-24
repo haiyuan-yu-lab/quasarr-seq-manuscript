@@ -1,0 +1,458 @@
+
+```{r}
+# Load required libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r}
+# Load QUASARR-seq logFCs
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_paBC_limma_logFC.tsv")
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_eaBC_limma_logFC.tsv")
+
+# Load mutation information
+Mutation_Categories <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/Mutation_Categories.csv")
+
+# Load element coordinates
+Element_Coordinates <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/Element_Coordinates.csv")
+```
+
+```{r}
+# Extract ORFs
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC)
+
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC %>%
+  filter(grepl("^[57]", Element)) %>%
+  select(Element, logFC)
+
+# Split ORFs by orientation
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_fwd <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs$Element),]
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_rev <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs$Element),]
+
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_fwd <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs$Element),]
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_rev <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs$Element),]
+```
+
+```{r}
+# Split full datasets by orientation
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$Element),]
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC$Element),]
+
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC[grepl("\\.fwd", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$Element),]
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC[grepl("\\.rev", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC$Element),]
+```
+
+```{r}
+# Compute normalization factors
+PA_fwd_NF <- mean(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_fwd$logFC, na.rm = TRUE)
+PA_rev_NF <- mean(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_ORFs_rev$logFC, na.rm = TRUE)
+
+EA_fwd_NF <- mean(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_fwd$logFC, na.rm = TRUE)
+EA_rev_NF <- mean(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_ORFs_rev$logFC, na.rm = TRUE)
+
+# Compute boost indices
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd %>%
+  mutate(
+    PA_BI = logFC - PA_fwd_NF
+  )
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev %>%
+  mutate(
+    PA_BI = logFC - PA_rev_NF
+  )
+
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd %>%
+  mutate(
+    EA_BI = logFC - EA_fwd_NF
+  )
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev %>%
+  mutate(
+    EA_BI = logFC - EA_rev_NF
+  )
+```
+
+```{r}
+# Combine orientations
+paBC_combined <- rbind(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_fwd, QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_rev)
+
+eaBC_combined <- rbind(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_fwd, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_rev)
+```
+
+```{r}
+# Extract mutants
+paBC_mut <- paBC_combined[grepl("_", paBC_combined$Element), ]
+
+eaBC_mut <- eaBC_combined[grepl("_", eaBC_combined$Element), ]
+```
+
+```{r}
+# Separate element and orientation information
+paBC_mut <- paBC_mut %>%
+  separate(Element, into = c("Element", "Orientation"), sep = "\\.", remove = FALSE)
+
+paBC_mut$Element <- gsub("\\..*", "", paBC_mut$Element)
+
+
+eaBC_mut <- eaBC_mut %>%
+  separate(Element, into = c("Element", "Orientation"), sep = "\\.", remove = FALSE)
+
+eaBC_mut$Element <- gsub("\\..*", "", eaBC_mut$Element)
+```
+
+```{r}
+# Rename column in mutation information
+colnames(Mutation_Categories)[colnames(Mutation_Categories) == "Allele"] <- "Element"
+
+# Merge mutant data with mutation information
+paBC_mut <- merge(paBC_mut, Mutation_Categories, by = "Element", all = FALSE)
+
+eaBC_mut <- merge(eaBC_mut, Mutation_Categories, by = "Element", all = FALSE)
+```
+
+```{r}
+# Separate element and mutation information
+paBC_mut <- paBC_mut %>%
+  separate(Element, into = c("Element", "Mutation"), sep = "_", remove = FALSE)
+
+paBC_mut$Element <- gsub("_.*", "", paBC_mut$Element)
+
+
+eaBC_mut <- eaBC_mut %>%
+  separate(Element, into = c("Element", "Mutation"), sep = "_", remove = FALSE)
+
+eaBC_mut$Element <- gsub("_.*", "", eaBC_mut$Element)
+```
+
+```{r}
+# Rename element to Element
+Element_Coordinates <- Element_Coordinates %>%
+  rename(Element = element)
+
+# Combine chromosome, start, and end into a new column
+Element_Coordinates <- Element_Coordinates %>%
+  mutate(Coordinate = paste(chromosome, start, end, sep = ":")) %>%
+  mutate(Coordinate = gsub(":(\\d+)$", "-\\1", Coordinate)) %>%
+  select(-chromosome, -start, -end)
+
+# Merge mutation data with element coordinates
+paBC_mut <- merge(paBC_mut, Element_Coordinates, by = "Element", all = FALSE)
+
+eaBC_mut <- merge(eaBC_mut, Element_Coordinates, by = "Element", all = FALSE)
+```
+
+```{r}
+# Recombine orientation with element and coordinate
+paBC_mut <- paBC_mut %>%
+  mutate(
+    Element = paste(Element, Orientation, sep = "."),
+    Coordinate = paste(Coordinate, Orientation, sep = ".")
+  ) %>%
+  select(-Orientation)
+
+eaBC_mut <- eaBC_mut %>%
+  mutate(
+    Element = paste(Element, Orientation, sep = "."),
+    Coordinate = paste(Coordinate, Orientation, sep = ".")
+  ) %>%
+  select(-Orientation)
+```
+
+```{r}
+# Prepare data for merging with wild-type
+PA_BI <- paBC_combined[, c('Element', 'PA_BI')]
+mut_PA_BI <- paBC_mut[, c('Element', 'Coordinate', 'Mutation', 'Category', 'PA_BI')]
+colnames(mut_PA_BI)[colnames(mut_PA_BI) == 'PA_BI'] <- 'mut_PA_BI'
+
+PA_merged <- inner_join(PA_BI, mut_PA_BI, by = "Element")
+
+
+EA_BI <- eaBC_combined[, c('Element', 'EA_BI')]
+mut_EA_BI <- eaBC_mut[, c('Element', 'Coordinate', 'Mutation', 'Category', 'EA_BI')]
+colnames(mut_EA_BI)[colnames(mut_EA_BI) == 'EA_BI'] <- 'mut_EA_BI'
+
+EA_merged <- inner_join(EA_BI, mut_EA_BI, by = "Element")
+```
+
+```{r}
+# Merge promoter and enhancer activity mutation data
+merged <- inner_join(PA_merged, EA_merged, by = c("Element", "Mutation"))
+```
+
+```{r}
+# Keep relevant columns
+merged <- merged[, c('Element', 'Coordinate.x', "Mutation", "Category.x", 'PA_BI', "mut_PA_BI", "EA_BI", "mut_EA_BI")]
+colnames(merged)[colnames(merged) == 'Coordinate.x'] <- 'Coordinate'
+colnames(merged)[colnames(merged) == 'Category.x'] <- 'Category'
+```
+
+```{r}
+# Calculate Δ boost indices
+merged$promoter_change <- merged$mut_PA_BI - merged$PA_BI
+merged$enhancer_change <- merged$mut_EA_BI - merged$EA_BI
+```
+
+```{r}
+# Combine coordinate and mutation identifiers
+merged <- merged %>%
+  mutate(CoordinateMutation = paste(Coordinate, Mutation, sep = "."))
+```
+
+```{r}
+# Remove empty values
+merged_clean <- merged %>%
+  filter(!is.na(promoter_change) & !is.na(enhancer_change))
+```
+
+```{r}
+# Example for element KSUAT0022
+KSUAT0022 <- merged_clean[merged_clean$Element == "KSUAT0022.fwd", ]
+
+KSUAT0022 <- KSUAT0022 %>%
+  mutate(Mutation2 = recode(Mutation, "A209C" = "A1C", "A212G" = "A4G", "T213C" = "T5C", "G214A" = "G6A"))
+
+# Set factor order
+KSUAT0022$Mutation <- factor(KSUAT0022$Mutation, levels = c("A209C", "A212G", "T213C", "G214A"))
+
+KSUAT0022$Mutation2 <- factor(KSUAT0022$Mutation2, levels = c("A1C", "A4G", "T5C", "G6A"))
+```
+
+```{r}
+# Pivot promoter activity to long format
+KSUAT0022_long <- KSUAT0022 %>%
+  pivot_longer(cols = c(PA_BI, mut_PA_BI), 
+               names_to = "Node", 
+               values_to = "Value")
+
+# Fig. 5a1
+f5a1 <- ggplot(KSUAT0022_long, aes(x = Mutation2, y = Value, color = Node, fill = Node)) +
+  geom_segment(data = KSUAT0022, aes(x = Mutation2, xend = Mutation2, y = mut_PA_BI, yend = PA_BI), inherit.aes = FALSE, color = "black") +
+  geom_point(size = 3, shape = 21) +
+  scale_y_continuous(limits = c(0, 4), labels = scales::number_format(accuracy = 0.1)) +
+  labs(x = "Mutation", y = "Promoter activity", color = NULL, fill = NULL) +
+  scale_fill_manual(labels = c("PA_BI" = "Wild-type", "mut_PA_BI" = "Mutant"),
+                    values = c("PA_BI" = "white", "mut_PA_BI" = "black"),
+                    breaks = c("mut_PA_BI", "PA_BI")) +
+  scale_color_manual(labels = c("PA_BI" = "Wild-type", "mut_PA_BI" = "Mutant"),
+                     values = c("PA_BI" = "black", "mut_PA_BI" = "black"),
+                     breaks = c("mut_PA_BI", "PA_BI")) +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  coord_flip()
+f5a1
+
+# Pivot enhancer activity to long format
+KSUAT0022_long <- KSUAT0022 %>%
+  pivot_longer(cols = c(EA_BI, mut_EA_BI), 
+               names_to = "Node2", 
+               values_to = "Value2")
+
+# Fig. 5a2
+f5a2 <- ggplot(KSUAT0022_long, aes(x = Mutation2, y = Value2, color = Node2, fill = Node2)) +
+  geom_segment(data = KSUAT0022, aes(x = Mutation2, xend = Mutation2, y = mut_EA_BI, yend = EA_BI), inherit.aes = FALSE, color = "black") +
+  geom_point(size = 3, shape = 21) +
+  scale_y_continuous(limits = c(0, 2)) +
+  labs(x = NULL, y = "Enhancer activity", color = NULL, fill = NULL) +
+  scale_fill_manual(labels = c("EA_BI" = "Wild-type", "mut_EA_BI" = "Mutant"),
+                    values = c("EA_BI" = "white", "mut_EA_BI" = "black"),
+                    breaks = c("EA_BI", "mut_EA_BI")) +
+  scale_color_manual(labels = c("EA_BI" = "Wild-type", "mut_EA_BI" = "Mutant"),
+                     values = c("EA_BI" = "black", "mut_EA_BI" = "black"),
+                     breaks = c("EA_BI", "mut_EA_BI")) +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        axis.ticks = element_line(),
+        axis.ticks.y = element_blank(),
+        axis.text = element_text(size = 10),
+        axis.text.y = element_blank(),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  coord_flip()
+f5a2
+```
+
+```{r}
+# Fig. 5a
+f5a <- (f5a1 + theme(legend.position = "bottom") + 
+        f5a2 + theme(legend.position = "none")) + 
+  plot_layout(guides = "collect") + 
+  plot_annotation(theme = theme(plot.title = element_text(hjust = 0.5, size = 14), legend.position = "bottom"))
+f5a
+```
+
+```{r}
+# Reshape promoter and enhancer Δ columns into long format
+heatmap_data <- merged_clean %>%
+  pivot_longer(
+    cols = c(promoter_change, enhancer_change),
+    names_to = "ChangeType",
+    values_to = "ChangeValue"
+  )
+
+# Set factor order
+heatmap_data$ChangeType <- factor(heatmap_data$ChangeType, levels = c("promoter_change", "enhancer_change"))
+```
+
+```{r}
+# Extract Δ promoter and Δ enhancer
+promoter_data <- subset(heatmap_data, ChangeType == "promoter_change")
+enhancer_data <- subset(heatmap_data, ChangeType == "enhancer_change")
+
+# Run t-test between Δ and 0
+t_test_promoter <- t.test(promoter_data$ChangeValue, mu = 0)
+t_test_enhancer <- t.test(enhancer_data$ChangeValue, mu = 0)
+
+# Function to convert P-value to significance label
+get_significance_label <- function(p_value) {
+  if (p_value < 0.001) {
+    expression(italic(P) < 0.001)
+  } else if (p_value < 0.01) {
+    expression(italic(P) < 0.01)
+  } else if (p_value < 0.05) {
+    expression(italic(P) < 0.05)
+  } else {
+    expression(italic(P) ~ "=" ~ "NS")  # Not significant
+  }
+}
+
+# Compute Cohen's d
+mean_promoter <- mean(promoter_data$ChangeValue)
+sd_promoter <- sd(promoter_data$ChangeValue)
+d_promoter <- (mean_promoter - 0) / sd_promoter
+
+mean_enhancer <- mean(enhancer_data$ChangeValue)
+sd_enhancer <- sd(enhancer_data$ChangeValue)
+d_enhancer <- (mean_enhancer - 0) / sd_enhancer
+
+# Create significance labels
+promoter_label <- get_significance_label(t_test_promoter$p.value)
+enhancer_label <- get_significance_label(t_test_enhancer$p.value)
+
+# Create Cohen's d labels
+promoter_d_label <- expression(paste(italic(d), " = ", -0.82))
+enhancer_d_label <- expression(paste(italic(d), " = ", -0.55))
+```
+
+```{r}
+# fig. 5b
+f5b <- ggplot(heatmap_data, aes(x = ChangeType, y = ChangeValue, fill = ChangeType)) +
+  stat_summary(fun = median, geom = "crossbar", width = 0.5, size = 0.1666) +
+  geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.666) +
+  annotate("text", x = 1, y = 1.5, label = promoter_label, size = 3, color = "black") +
+  annotate("text", x = 1, y = 1.25, label = promoter_d_label, size = 3, color = "black") +
+  annotate("text", x = 1, y = 1, label = "n = 24", size = 3, color = "black") +
+  annotate("text", x = 2, y = 1.5, label = enhancer_label, size = 3, color = "black") +
+  annotate("text", x = 2, y = 1.25, label = enhancer_d_label, size = 3, color = "black") +
+  annotate("text", x = 2, y = 1, label = "n = 24", size = 3, color = "black") +
+  scale_x_discrete(labels = c("promoter_change" = "Promoter\nactivity", 
+                              "enhancer_change" = "Enhancer\nactivity")) +
+  labs(x = "", y = "ΔBoost index") +
+  scale_fill_manual(values = c("enhancer_change" = "#4970e2", "promoter_change" = "#b04dbe")) +
+  scale_color_manual(values = c("enhancer_change" = "#4970e2", "promoter_change" = "#b04dbe")) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "none")
+f5b
+```
+
+```{r}
+# Define category order
+custom_category_order <- c("Population", "GWAS", "SyntheticSingle", "SyntheticDouble", "Disease")
+
+# Convert category to ordered factor
+merged_clean$Category <- factor(merged_clean$Category, levels = custom_category_order)
+
+# Order elements by category, then descending promoter Δ
+element_order <- merged_clean %>%
+  arrange(Category, -promoter_change) %>%
+  pull(CoordinateMutation)
+
+# Apply ordered factor
+heatmap_data$CoordinateMutation <- factor(heatmap_data$CoordinateMutation, levels = element_order)
+
+# Map category labels back onto long-format rows
+heatmap_data$CategoryLabel <- merged_clean$Category[match(heatmap_data$CoordinateMutation, merged_clean$CoordinateMutation)]
+
+# Fig. 5c
+f5c <- ggplot(heatmap_data, aes(x = ChangeType, y = CoordinateMutation, fill = ChangeValue)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(high = "white", low = "#305cde", name = "ΔBoost index") +
+  scale_x_discrete(labels = c("promoter_change" = paste("Promoter\nactivity"), 
+                              "enhancer_change" = paste("Enhancer\nactivity"))) +
+  labs(title = NULL, x = NULL, y = NULL) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 7, hjust = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        aspect.ratio = 3) +
+  geom_segment(aes(x = 2.6, xend = 2.6, y = 16, yend = 24), color = "black", linetype = "solid", size = 0.1) +
+  geom_segment(aes(x = 2.6, xend = 2.6, y = 13, yend = 15), color = "black", linetype = "solid", size = 0.1) +
+  geom_segment(aes(x = 2.6, xend = 2.6, y = 9, yend = 12), color = "black", linetype = "solid", size = 0.1) +
+  geom_segment(aes(x = 2.6, xend = 2.6, y = 1, yend = 8), color = "black", linetype = "solid", size = 0.1) +
+  annotate("text", x = 2.8, y = 19.15, label = "Disease", size = 3, hjust = 0, angle = 90, color = "black") +
+  annotate("text", x = 2.8, y = 13.05, label = "Synthetic", size = 3, hjust = 0, angle = 90, color = "black") +
+  annotate("text", x = 2.8, y = 9.8, label = "GWAS", size = 3, hjust = 0, angle = 90, color = "black") +
+  annotate("text", x = 2.8, y = 3.5, label = "Population", size = 3, hjust = 0, angle = 90, color = "black") +
+  coord_cartesian(clip = "off")
+f5c
+```
+
+```{r}
+# Compute Spearman correlation between Δ promoter activity and Δ enhancer activity
+cor_test <- cor.test(merged_clean$promoter_change, merged_clean$enhancer_change, use = "complete.obs", method = "spearman")
+rho <- cor_test$estimate
+p_value <- cor_test$p.value
+
+# Create P-value label
+p_label <- if (p_value < 0.001) {
+  substitute(italic(P) < 0.001)
+} else {
+  substitute(italic(P) == .(formatC(p_value, format = "e", digits = 2)))
+}
+
+# Fig. 5d
+f5d <- ggplot(merged_clean, aes(x = promoter_change, y = enhancer_change)) +
+  geom_point(size = 1, alpha = 0.5) +
+  geom_smooth(method = "lm", color = "#305cde", se = FALSE, linetype = "dashed", size = 0.5) +
+  coord_cartesian(xlim = c(-2, 1), ylim = c(-2, 1)) +
+  labs(x = "ΔPromoter activity\nboost index",
+       y = "ΔEnhancer activity\nboost index") +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = -2,
+           y = 1,
+           label = as.expression(bquote(rho == .(round(rho, 2)) * "," ~ .(p_label))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f5d
+```
+
+```{r}
+sessionInfo()
+```

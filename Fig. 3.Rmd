@@ -1,0 +1,517 @@
+
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(tools)
+library(ggsignif)
+```
+
+```{r}
+# Load QUASARR-seq calls
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_paBC_limma_logFC_call.csv")
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_eaBC_limma_logFC_call.csv")
+
+# Load GENCODE annotations
+Confident_Gencode_Transcribed <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/Confident_Gencode_Transcribed.txt", header=FALSE)
+Confident_Gencode_Untranscribed <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/Confident_Gencode_Untranscribed.txt", header=FALSE)
+
+# Load PRO-cap TSS counts
+PROcap_counts <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/PROcap_counts.csv")
+```
+
+```{r}
+# Merge promoter activity calls and enhancer activity calls
+QUASARR_merged <- merge(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, by = "Element")
+```
+
+```{r}
+# Rename column in GENCODE annotations
+colnames(Confident_Gencode_Transcribed)[1] <- "Element"
+colnames(Confident_Gencode_Untranscribed)[1] <- "Element"
+
+# Extract ORFs
+QUASARR_merged_ORFs <- QUASARR_merged[grepl("^(5|7)", QUASARR_merged$Element),]
+
+# Assign ORF placeholders
+QUASARR_merged_ORFs$V2 <- "ORF"
+QUASARR_merged_ORFs$V3 <- " "
+QUASARR_merged_ORFs$V4 <- " "
+QUASARR_merged_ORFs$PROcapClass <- " "
+
+# Merge with GENCODE annotations and assign PRO-cap class
+QUASARR_merged_GENCODE_transcribed <- merge(QUASARR_merged, Confident_Gencode_Transcribed, by = "Element")
+QUASARR_merged_GENCODE_transcribed$PROcapClass <- "Transcribed"
+
+QUASARR_merged_GENCODE_untranscribed <- merge(QUASARR_merged, Confident_Gencode_Untranscribed, by = "Element")
+QUASARR_merged_GENCODE_untranscribed$PROcapClass <- "Untranscribed"
+
+# Combine transcribed and untranscribed
+QUASARR_merged_GENCODE <- rbind(QUASARR_merged_GENCODE_transcribed, QUASARR_merged_GENCODE_untranscribed)
+
+# Combine ORFs and annotated elements
+QUASARR_merged_ORFs_GENCODE <- rbind(QUASARR_merged_ORFs, QUASARR_merged_GENCODE)
+
+# Set factor order
+QUASARR_merged_ORFs_GENCODE <- QUASARR_merged_ORFs_GENCODE %>%
+  mutate(level = factor(V2, levels = c("ORF", "Distal", "Proximal")))
+
+QUASARR_merged_ORFs_GENCODE <- QUASARR_merged_ORFs_GENCODE %>%
+  mutate(level2 = factor(PROcapClass, levels = c(" ", "Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Generate contingency table of promoter and enhancer activity calls
+activity_table <- table(QUASARR_merged$call.x, QUASARR_merged$call.y)
+
+# Convert contingency table to a tidy dataframe
+activity_df <- as.data.frame(activity_table)
+colnames(activity_df) <- c("Promoter_Call", "Enhancer_Call", "Count")
+
+# Compute total number of elements
+total_elements <- sum(activity_df$Count)
+
+# Compute percent active of each call combination
+activity_df$Percent <- (activity_df$Count / total_elements) * 100
+
+# Fig. 3a
+f3a <- ggplot(activity_df, aes(x = Promoter_Call, y = Enhancer_Call, fill = Count)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "#967bb6") +
+  geom_text(aes(label = paste(Count, "\n(", round(Percent, 1), "%)", sep = "")), color = "black", size = 3) +
+  theme_minimal() +
+  labs(title = "QUASARR-seq calls", x = "Promoter call", y = "Enhancer call", fill = "Count") +
+  theme(axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 9)) +
+  scale_x_discrete(labels = toTitleCase) +
+  scale_y_discrete(labels = toTitleCase)
+f3a
+```
+
+```{r}
+# Rename column in GENCODE annotations
+colnames(Confident_Gencode_Transcribed)[1] <- "Element"
+colnames(Confident_Gencode_Untranscribed)[1] <- "Element"
+
+# Extract ORFs
+paBC_ORFs <- QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call[grepl("^(5|7)", QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call$Element),]
+
+# Assign ORF placeholders
+paBC_ORFs$V2 <- "ORF"
+paBC_ORFs$V3 <- " "
+paBC_ORFs$V4 <- " "
+paBC_ORFs$PROcapClass <- " "
+
+# Merge with GENCODE annotations and assign PRO-cap class
+paBC_GENCODE_transcribed <- merge(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call, Confident_Gencode_Transcribed, by = "Element")
+paBC_GENCODE_transcribed$PROcapClass <- "Transcribed"
+
+paBC_GENCODE_untranscribed <- merge(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC_call, Confident_Gencode_Untranscribed, by = "Element")
+paBC_GENCODE_untranscribed$PROcapClass <- "Untranscribed"
+
+# Combine transcribed and untranscribed
+paBC_GENCODE <- rbind(paBC_GENCODE_transcribed, paBC_GENCODE_untranscribed)
+
+# Combine ORFs and annotated elements
+paBC_ORFs_GENCODE <- rbind(paBC_ORFs, paBC_GENCODE)
+
+# Set factor order
+paBC_ORFs_GENCODE <- paBC_ORFs_GENCODE %>%
+  mutate(level = factor(V2, levels = c("ORF", "Distal", "Proximal")))
+
+paBC_ORFs_GENCODE <- paBC_ORFs_GENCODE %>%
+  mutate(level2 = factor(PROcapClass, levels = c(" ", "Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Count total proximal transcribed elements
+paBC_proximal_transcribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Count active proximal transcribed elements
+paBC_active_proximal_transcribed <- paBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Proximal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Compute percent active for proximal transcribed
+paBC_PercentActive_proximal_transcribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Transcribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Count total proximal untranscribed elements
+paBC_proximal_untranscribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Count active proximal untranscribed elements
+paBC_active_proximal_Untranscribed <- paBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Proximal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Compute percent active for proximal untranscribed
+paBC_PercentActive_proximal_untranscribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Untranscribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Count total distal transcribed elements
+paBC_distal_transcribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Count active distal transcribed elements
+paBC_active_distal_transcribed <- paBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Distal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Compute percent active for distal transcribed
+paBC_PercentActive_distal_transcribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Transcribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Count total distal untranscribed elements
+paBC_distal_untranscribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Count active distal untranscribed elements
+paBC_active_distal_untranscribed <- paBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Distal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Compute percent active for distal untranscribed
+paBC_PercentActive_distal_untranscribed <- paBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Untranscribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Build summary dataframes
+paBC_PercentActive_proximal_transcribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Proximal", PROcapClass = "Transcribed", PercentActive = paBC_PercentActive_proximal_transcribed)
+paBC_PercentActive_proximal_untranscribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Proximal", PROcapClass = "Untranscribed", PercentActive = paBC_PercentActive_proximal_untranscribed)
+paBC_PercentActive_distal_transcribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Distal", PROcapClass = "Transcribed", PercentActive = paBC_PercentActive_distal_transcribed)
+paBC_PercentActive_distal_untranscribed_PGENCODE_PROcap <- data.frame(GENCODEClass = "Distal", PROcapClass = "Untranscribed", PercentActive = paBC_PercentActive_distal_untranscribed)
+
+# Combine summary dataframes
+paBC_PercentActive_GENCODE_PROcap <- rbind(paBC_PercentActive_proximal_transcribed_GENCODE_PROcap, paBC_PercentActive_proximal_untranscribed_GENCODE_PROcap, paBC_PercentActive_distal_transcribed_GENCODE_PROcap, paBC_PercentActive_distal_untranscribed_PGENCODE_PROcap)
+
+# Set factor order
+paBC_PercentActive_GENCODE_PROcap <- paBC_PercentActive_GENCODE_PROcap %>%
+  mutate(level = factor(GENCODEClass, levels = c("Distal", "Proximal")))
+
+paBC_PercentActive_GENCODE_PROcap <- paBC_PercentActive_GENCODE_PROcap %>%
+  mutate(level2 = factor(PROcapClass, levels = c("Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Add total and active counts for label
+paBC_PercentActive_GENCODE_PROcap <- paBC_PercentActive_GENCODE_PROcap %>%
+  mutate(
+    total = case_when(
+      level == "Proximal" & level2 == "Transcribed" ~ paBC_proximal_transcribed,
+      level == "Proximal" & level2 == "Untranscribed" ~ paBC_proximal_untranscribed,
+      level == "Distal" & level2 == "Transcribed" ~ paBC_distal_transcribed,
+      level == "Distal" & level2 == "Untranscribed" ~ paBC_distal_untranscribed
+    ),
+    active = case_when(
+      level == "Proximal" & level2 == "Transcribed" ~ paBC_active_proximal_transcribed,
+      level == "Proximal" & level2 == "Untranscribed" ~ paBC_active_proximal_Untranscribed,
+      level == "Distal" & level2 == "Transcribed" ~ paBC_active_distal_transcribed,
+      level == "Distal" & level2 == "Untranscribed" ~ paBC_active_distal_untranscribed
+    ),
+    label = paste(active, "/", total)
+  )
+
+# Fig. 3b
+f3b <- ggplot(paBC_PercentActive_GENCODE_PROcap, aes(x = level, y = PercentActive, fill = level2)) +
+  geom_bar(stat = "identity", width = 0.666, position = "dodge") +
+  geom_text(aes(label = label, y = 35, angle = 90), position = position_dodge(width = 0.666), size = 3, color = "black") +
+  labs(x = "", y = "QUASARR-seq\nactive promoter rate (%)", fill = "PRO-cap class") +
+  scale_fill_manual(values = c("Untranscribed" = "black", "Transcribed" = "#b04dbe")) +
+  scale_y_continuous(limits = c(0, 70), breaks = seq(0, 70, by = 10)) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = c(0.25, 0.85),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8))
+f3b
+```
+
+```{r}
+# Extract ORFs
+eaBC_ORFs <- QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call[grepl("^(5|7)", QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call$Element),]
+
+# Assign ORF placeholders
+eaBC_ORFs$V2 <- "ORF"
+eaBC_ORFs$V3 <- " "
+eaBC_ORFs$V4 <- " "
+eaBC_ORFs$PROcapClass <- " "
+
+# Merge with GENCODE annotations and assign PRO-cap class
+eaBC_GENCODE_transcribed <- merge(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, Confident_Gencode_Transcribed, by = "Element")
+eaBC_GENCODE_transcribed$PROcapClass <- "Transcribed"
+
+eaBC_GENCODE_untranscribed <- merge(QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC_call, Confident_Gencode_Untranscribed, by = "Element")
+eaBC_GENCODE_untranscribed$PROcapClass <- "Untranscribed"
+
+# Combine transcribed and untranscribed
+eaBC_GENCODE <- rbind(eaBC_GENCODE_transcribed, eaBC_GENCODE_untranscribed)
+
+# Combine ORFs and annotated elements
+eaBC_ORFs_GENCODE <- rbind(eaBC_ORFs, eaBC_GENCODE)
+
+# Set factor order
+eaBC_ORFs_GENCODE <- eaBC_ORFs_GENCODE %>%
+  mutate(level = factor(V2, levels = c("ORF", "Distal", "Proximal")))
+
+eaBC_ORFs_GENCODE <- eaBC_ORFs_GENCODE %>%
+  mutate(level2 = factor(PROcapClass, levels = c(" ", "Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Count total proximal transcribed elements
+eaBC_proximal_transcribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Count active proximal transcribed elements
+eaBC_active_proximal_transcribed <- eaBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Proximal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Compute percent active for proximal transcribed
+eaBC_PercentActive_proximal_transcribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Transcribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Count total proximal untranscribed elements
+eaBC_proximal_untranscribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Count active proximal untranscribed elements
+eaBC_active_proximal_Untranscribed <- eaBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Proximal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Compute percent active for proximal untranscribed
+eaBC_PercentActive_proximal_untranscribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Proximal" & PROcapClass == "Untranscribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Count total distal transcribed elements
+eaBC_distal_transcribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Count active distal transcribed elements
+eaBC_active_distal_transcribed <- eaBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Distal" & PROcapClass == "Transcribed") %>%
+  nrow()
+
+# Compute percent active for distal transcribed
+eaBC_PercentActive_distal_transcribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Transcribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Count total distal untranscribed elements
+eaBC_distal_untranscribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Count active distal untranscribed elements
+eaBC_active_distal_untranscribed <- eaBC_ORFs_GENCODE %>%
+  filter(call == "active" & V2 == "Distal" & PROcapClass == "Untranscribed") %>%
+  nrow()
+
+# Compute percent active for distal untranscribed
+eaBC_PercentActive_distal_untranscribed <- eaBC_ORFs_GENCODE %>%
+  filter(V2 == "Distal" & PROcapClass == "Untranscribed") %>%
+  summarise(PercentActive = mean(call == "active") * 100) %>%
+  pull(PercentActive)
+
+# Build summary dataframes
+eaBC_PercentActive_proximal_transcribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Proximal", PROcapClass = "Transcribed", PercentActive = eaBC_PercentActive_proximal_transcribed)
+eaBC_PercentActive_proximal_untranscribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Proximal", PROcapClass = "Untranscribed", PercentActive = eaBC_PercentActive_proximal_untranscribed)
+eaBC_PercentActive_distal_transcribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Distal", PROcapClass = "Transcribed", PercentActive = eaBC_PercentActive_distal_transcribed)
+eaBC_PercentActive_distal_untranscribed_GENCODE_PROcap <- data.frame(GENCODEClass = "Distal", PROcapClass = "Untranscribed", PercentActive = eaBC_PercentActive_distal_untranscribed)
+
+# Combine summary dataframes
+eaBC_PercentActive_GENCODE_PROcap <- rbind(eaBC_PercentActive_proximal_transcribed_GENCODE_PROcap, eaBC_PercentActive_proximal_untranscribed_GENCODE_PROcap, eaBC_PercentActive_distal_transcribed_GENCODE_PROcap, eaBC_PercentActive_distal_untranscribed_GENCODE_PROcap)
+
+# Set factor order
+eaBC_PercentActive_GENCODE_PROcap <- eaBC_PercentActive_GENCODE_PROcap %>%
+  mutate(level = factor(GENCODEClass, levels = c("Distal", "Proximal")))
+
+eaBC_PercentActive_GENCODE_PROcap <- eaBC_PercentActive_GENCODE_PROcap %>%
+  mutate(level2 = factor(PROcapClass, levels = c("Untranscribed", "Transcribed")))
+```
+
+```{r}
+# Add total and active counts for label
+eaBC_PercentActive_GENCODE_PROcap <- eaBC_PercentActive_GENCODE_PROcap %>%
+  mutate(
+    total = case_when(
+      level == "Proximal" & level2 == "Transcribed" ~ eaBC_proximal_transcribed,
+      level == "Proximal" & level2 == "Untranscribed" ~ eaBC_proximal_untranscribed,
+      level == "Distal" & level2 == "Transcribed" ~ eaBC_distal_transcribed,
+      level == "Distal" & level2 == "Untranscribed" ~ eaBC_distal_untranscribed
+    ),
+    active = case_when(
+      level == "Proximal" & level2 == "Transcribed" ~ eaBC_active_proximal_transcribed,
+      level == "Proximal" & level2 == "Untranscribed" ~ eaBC_active_proximal_Untranscribed,
+      level == "Distal" & level2 == "Transcribed" ~ eaBC_active_distal_transcribed,
+      level == "Distal" & level2 == "Untranscribed" ~ eaBC_active_distal_untranscribed
+    ),
+    label = paste(active, "/", total)
+  )
+
+f3c <- ggplot(eaBC_PercentActive_GENCODE_PROcap, aes(x = level, y = PercentActive, fill = level2)) +
+  geom_bar(stat = "identity", width = 0.666, position = "dodge") +
+  geom_text(aes(label = label, y = 25, angle = 90), position = position_dodge(width = 0.666), size = 3, color = "black") +
+  labs(x = "", y = "QUASARR-seq\nactive enhancer rate (%)", fill = "PRO-cap class") +
+  scale_fill_manual(values = c("Untranscribed" = "black", "Transcribed" = "#4970e2")) +
+  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, by = 10)) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = c(0.25, 0.85),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8))
+f3c
+```
+
+```{r}
+# Merge promoter activity annotated elements with PRO-cap counts
+paBC_counts <- merge(paBC_ORFs_GENCODE, PROcap_counts, by = "Element")
+```
+
+```{r}
+# Set factor order
+paBC_counts <- paBC_counts %>%
+  mutate(level = factor(level, levels = c("Distal", "Proximal")), 
+         call = factor(call, levels = c("inactive", "active")))
+
+# Extract active proximal and distal elements
+filtered_data_active <- paBC_counts %>%
+  filter(call == "active" & level %in% c("Proximal", "Distal"))
+
+# Run t-test between active proximal and distal PRO-cap counts
+t_test_active <- t.test(Count ~ level, data = filtered_data_active)
+
+# Fig. 3d
+f3d <- ggplot(paBC_counts, aes(x = level, y = Count, fill = call)) +
+  geom_violin(trim = FALSE, alpha = 0.666) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, position = position_dodge(0.9)) +
+  stat_summary(fun = median, geom = "point", size = 2, color = "black", position = position_dodge(0.9)) +
+  scale_y_log10() +
+  scale_fill_manual(values = c("inactive" = "grey", "active" = "#b04dbe"),
+                    labels = c("inactive" = "Inactive", "active" = "Active")) +
+  labs(title = "Promoter activity", x = "GENCODE class", y = "PRO-cap TSS counts", fill = "Call") +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "bottom",
+        legend.key.size = unit(0.5, "cm"),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8)) +
+  geom_signif(data = filtered_data_active,
+              y_position = 6,
+              xmin = 1.22,
+              xmax = 2.22,
+              tip_length = 0.015,
+              size = 0.333,
+              annotations = ifelse(t_test_active$p.value < 0.001, "***",
+                            ifelse(t_test_active$p.value < 0.01, "**",
+                            ifelse(t_test_active$p.value < 0.05, "*", "NS."))),
+              textsize = 3)
+f3d
+```
+
+```{r}
+# Merge enhancer activity annotated elements with PRO-cap counts
+eaBC_counts <- merge(eaBC_ORFs_GENCODE, PROcap_counts, by = "Element")
+```
+
+```{r}
+# Set factor order
+eaBC_counts <- eaBC_counts %>%
+  mutate(level = factor(level, levels = c("Distal", "Proximal")), 
+         call = factor(call, levels = c("inactive", "active")))
+
+# Extract active proximal and distal elements
+filtered_data_active <- eaBC_counts %>%
+  filter(call == "active" & level %in% c("Proximal", "Distal"))
+
+# Run t-test between active proximal and distal PRO-cap counts
+t_test_active <- t.test(Count ~ level, data = filtered_data_active)
+
+# Fig. 3e
+f3e <- ggplot(eaBC_counts, aes(x = level, y = Count, fill = call)) +
+  geom_violin(trim = FALSE, alpha = 0.666) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, position = position_dodge(0.9)) +
+  stat_summary(fun = median, geom = "point", size = 2, color = "black", position = position_dodge(0.9)) +
+  scale_y_log10() +
+  scale_fill_manual(values = c("inactive" = "grey", "active" = "#4970e2"),
+                    labels = c("inactive" = "Inactive", "active" = "Active")) +
+  labs(title = "Enhancer activity", x = "GENCODE class", y = "PRO-cap TSS counts", fill = "Call") +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        plot.title = element_text(size = 11, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1,
+        legend.position = "bottom",
+        legend.key.size = unit(0.5, "cm"),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 9)) +
+  geom_signif(data = filtered_data_active,
+              y_position = 6,
+              xmin = 1.22,
+              xmax = 2.22,
+              tip_length = 0.015,
+              size = 0.333,
+              annotations = ifelse(t_test_active$p.value < 0.001, "***",
+                            ifelse(t_test_active$p.value < 0.01, "**",
+                            ifelse(t_test_active$p.value < 0.05, "*", "NS."))),
+              textsize = 3)
+f3e
+```
+
+```{r}
+sessionInfo()
+```

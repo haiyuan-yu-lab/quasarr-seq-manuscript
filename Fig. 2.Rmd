@@ -1,0 +1,178 @@
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r}
+# Load QUASARR-seq logFCs
+QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_paBC_limma_logFC.tsv")
+QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC <- read.delim("~/Desktop/QUASARRseqManuscriptRevision2/QUASARR_CNPL-TRE202-MRE_eaBC_limma_logFC.tsv")
+
+# Load CRISPRa data
+Wang_CRISPRa <- read.csv("~/Desktop/QUASARRseqManuscriptRevision2/Wang_CRISPRa.csv", row.names=1)
+```
+
+```{r}
+# Merge promoter activity and enhancer activity
+QUASARR_merged <- merge(QUASARR_CNPL.TRE202.MRE_paBC_limma_logFC, QUASARR_CNPL.TRE202.MRE_eaBC_limma_logFC, by = "Element")
+```
+
+```{r}
+# Compute Spearman correlation between promoter activity and enhancer activity
+cor_test <- cor.test(QUASARR_merged$logFC.y, QUASARR_merged$logFC.x, use = "complete.obs", method = "spearman")
+rho <- cor_test$estimate
+p_value <- cor_test$p.value
+
+# Fit linear regression model
+lm_model <- lm(logFC.y ~ logFC.x, data = QUASARR_merged, na.action = na.exclude)
+
+# Create P-value label
+p_label <- if (p_value < 0.001) {
+  substitute(italic(P) < 0.001)
+} else {
+  substitute(italic(P) == .(formatC(p_value, format = "e", digits = 2)))
+}
+
+# Fig. 2a
+f2a <- ggplot(QUASARR_merged, aes(x = logFC.x, y = logFC.y)) +
+  geom_point(size = 1, alpha = 0.25) +
+  geom_smooth(method = "lm", color = "#DD2680", se = FALSE, linetype = "dashed", size = 0.5) +
+  geom_vline(xintercept = 0.8198394, linetype = "dashed", color = "grey") +
+  geom_hline(yintercept = 0.5456123, linetype = "dashed", color = "grey") +
+  coord_cartesian(xlim = c(-2.5, 7.5), ylim = c(-2.5, 7)) +
+  labs(x = expression("Promoter activity (log"["2"]*")"),
+       y = expression("Enhancer activity (log"["2"]*")")) +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = min(QUASARR_merged$logFC.x - 1, na.rm = TRUE),
+           y = max(QUASARR_merged$logFC.y + 1.666, na.rm = TRUE),
+           label = as.expression(bquote(rho == .(round(rho, 2)) * "," ~ .(p_label))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f2a
+```
+
+```{r}
+# Convert rownames to column and parse metadata
+CRISPRa_tidy <- Wang_CRISPRa %>%
+  rownames_to_column("Condition") %>%
+  
+  # Assign cell line
+  mutate(
+    CellLine = case_when(
+      str_detect(Condition, "^HEK 293T") ~ "HEK 293T",
+      str_detect(Condition, "^HeLa") ~ "HeLa"
+    ),
+    
+    # Assign targeted locus
+    TargetedLocus = case_when(
+      str_detect(Condition, " HS2 targeted") ~ "HS2",
+      str_detect(Condition, " HBG1 targeted") ~ "HBG1"
+    ),
+    
+    # Assign measured locus
+    MeasuredLocus = case_when(
+      str_detect(Condition, "HS2 eRNA") ~ "HS2",
+      str_detect(Condition, "HBG1 mRNA") ~ "HBG1",
+      str_detect(Condition, "HS2 H3K27ac") ~ "HS2",
+      str_detect(Condition, "HBG1 H3K27ac") ~ "HBG1",
+      str_detect(Condition, "3C$") ~ "HS2-HBG1"
+    ),
+    
+    # Assign measurement
+    Measurement = case_when(
+      str_detect(Condition, "eRNA$") ~ "eRNA",
+      str_detect(Condition, "mRNA$") ~ "mRNA",
+      str_detect(Condition, "H3K27ac$") ~ "H3K27ac",
+      str_detect(Condition, "3C$") ~ "3C"
+    )
+  ) %>%
+  
+  # Convert wide format to long format
+  pivot_longer(
+    cols = -c(Condition, CellLine, TargetedLocus, MeasuredLocus, Measurement),
+    names_to = "Activator_Rep",
+    values_to = "Value"
+  ) %>%
+  
+  # Split activator and replicate information
+  separate(Activator_Rep, into = c("Activator", "Replicate"), sep = "_R") %>%
+  
+  # Standardize replicate labels
+  mutate(Replicate = paste0("R", Replicate))
+```
+
+```{r}
+# Extract HS2-targeted eRNA measurements
+erna_data <- CRISPRa_tidy %>%
+  filter(CellLine == "HEK 293T",
+         TargetedLocus == "HS2",
+         Measurement == "eRNA",
+         Activator %in% c("dCas9", "dCas9.VPR", "dCas9.SAM", "dCas9.SunTag", "dCas9.p300", "dCas9.CBP")) %>%
+  select(Activator, Replicate, eRNA = Value)
+
+# Extract HS2-targeted mRNA measurements
+mrna_data <- CRISPRa_tidy %>%
+  filter(CellLine == "HEK 293T",
+         TargetedLocus == "HS2",
+         Measurement == "mRNA",
+         Activator %in% c("dCas9", "dCas9.VPR", "dCas9.SAM", "dCas9.SunTag", "dCas9.p300", "dCas9.CBP")) %>%
+  select(Activator, Replicate, mRNA = Value)
+
+# Merge eRNA and mRNA by activator and replicate
+scatter_data <- inner_join(erna_data, mrna_data, by = c("Activator", "Replicate"))
+
+# Compute Spearman correlation between HS2 eRNA and HBG1 mRNA
+cor_test <- cor.test(scatter_data$eRNA, scatter_data$mRNA, use = "complete.obs", method = "spearman")
+rho <- cor_test$estimate
+p_value <- cor_test$p.value
+
+# Create P-value label
+p_label <- if (p_value < 0.001) {
+  substitute(italic(P) < 0.001)
+} else {
+  substitute(italic(P) == .(formatC(p_value, format = "e", digits = 2)))
+}
+
+# Set factor order
+scatter_data$Activator <- factor(scatter_data$Activator,
+                                 levels = c("dCas9", "dCas9.VPR", "dCas9.SAM", 
+                                            "dCas9.SunTag", "dCas9.p300", "dCas9.CBP"))
+
+# Fig. 2b
+f2b <- ggplot(scatter_data, aes(x = eRNA, y = mRNA, color = Activator)) +
+  geom_point(size = 1) +
+  geom_smooth(method = "lm", color = "black", se = FALSE, linetype = "dashed", size = 0.5) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Relative HS2 eRNA signal", y = "Relative HBG1 mRNA signal") +
+  scale_color_manual(values = c("gray", "#DD2680", "#FE6100", "#FFB001", "#648FFF", "#775EF0"),
+                     labels = c("dCas9", "dCas9-VPR", "dCas9-SAM", "dCas9-SunTag", "dCas9-p300", "dCas9-CBP"), name = "Activator") +
+  theme_minimal() +
+  theme(axis.line = element_line(),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 11),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title = element_text(size = 10, hjust = 0.5),
+        aspect.ratio = 1) +
+  annotate("text",
+           x = min(scatter_data$eRNA, na.rm = TRUE),
+           y = max(scatter_data$mRNA, na.rm = TRUE),
+           label = as.expression(bquote(rho == .(round(rho, 2)) * "," ~ .(p_label))),
+           hjust = 0, vjust = 1, size = 3, color = "black")
+f2b
+```
+
+```{r}
+sessionInfo()
+```
