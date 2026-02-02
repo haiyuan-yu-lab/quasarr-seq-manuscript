@@ -1,7 +1,7 @@
 # quasarr-seq-manuscript
 This repository contains the R Markdown (.Rmd) notebooks used for data analysis and figure generation for the manuscript:
 
-**"Dual promoter–enhancer activities reflect a unified regulatory logic."** ([PMID: 40161809](https://www.nature.com/articles/s41467-026-68780-y))
+**"Dual promoter–enhancer activities reflect a unified regulatory logic."** ([PMID: 41617689](https://www.nature.com/articles/s41467-026-68780-y))
 
 Raw data are available in GEO. ([Series accession: GSE310760](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE310760))
 
